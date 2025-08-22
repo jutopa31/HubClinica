@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useMemo } from "react"
+import { database } from "@/lib/redcap-database"
 import {
   BarChart,
   Bar,
@@ -31,6 +32,8 @@ import {
   MapPin,
   Settings,
   Table,
+  CheckCircle,
+  AlertCircle,
 } from "lucide-react"
 
 export default function CadasilDashboard() {
@@ -66,8 +69,15 @@ export default function CadasilDashboard() {
 
   const loadInitialData = async () => {
     try {
-      // Data based on real CADASILAr registry - 30 patients sample from CSV
-      const realData = [
+      setLoading(true)
+      // Try to load from Supabase first, fall back to sample data if no connection
+      const patients = await database.getPatients()
+      
+      if (patients && patients.length > 0) {
+        setData(patients)
+      } else {
+        // Fallback sample data based on real CADASILAr registry
+        const realData = [
         {
           record_id: 5,
           edad_ingresada: 54,
@@ -453,11 +463,26 @@ export default function CadasilDashboard() {
           factores_riesgo___5: 0,
         }
       ]
-
-      setData(realData)
+        setData(realData)
+      }
       setLoading(false)
     } catch (error) {
       console.error("Error cargando datos:", error)
+      // If Supabase fails, use minimal sample data
+      const fallbackData = [
+        {
+          record_id: 5,
+          edad_ingresada: 54,
+          sexo: 1,
+          provincia: 1,
+          sintoma_inicial: 2,
+          metodo_diagnostico: 1,
+          antecedentes_familiares: 1,
+          resultado_genetico: "NM_000435.3(NOTCH3):c.751T>A (p.Cys251Ser)",
+          exon: 5,
+        }
+      ]
+      setData(fallbackData)
       setLoading(false)
     }
   }
@@ -483,6 +508,7 @@ export default function CadasilDashboard() {
       // Mapear datos del CSV al formato esperado por el dashboard
       const mappedData = mainRecords.map((row) => ({
         record_id: row.record_id,
+        nombre_apellido: row.nombre_apellido,
         edad_ingresada: row.edad_ingresada || 0,
         sexo: row.sexo,
         provincia: row.provincia,
@@ -717,6 +743,53 @@ export default function CadasilDashboard() {
     }
   }, [filteredData])
 
+  // Patient completeness analysis
+  const patientCompleteness = useMemo(() => {
+    if (!data.length) return []
+    
+    const calculateCompleteness = (patient) => {
+      const criticalFields = [
+        'nombre_apellido', 'sexo', 'fecha_nacimiento', 'provincia',
+        'sintoma_inicial', 'edad_inicio', 'metodo_diagnostico',
+        'antecedentes_familiares', 'resultado_genetico'
+      ]
+      
+      const secondaryFields = [
+        'medico_derivante', 'institucion', 'historia_clinica', 'ciudad',
+        'dominancia', 'escolaridad', 'diagnostico_inicial', 'exon',
+        'valor_mmse_moca1', 'fecha_acv_1'
+      ]
+      
+      const criticalComplete = criticalFields.filter(field => {
+        const value = patient[field]
+        return value !== null && value !== undefined && value !== '' && value !== 0
+      }).length
+      
+      const secondaryComplete = secondaryFields.filter(field => {
+        const value = patient[field]
+        return value !== null && value !== undefined && value !== '' && value !== 0
+      }).length
+      
+      const criticalPercentage = (criticalComplete / criticalFields.length) * 100
+      const secondaryPercentage = (secondaryComplete / secondaryFields.length) * 100
+      const overallPercentage = ((criticalComplete + secondaryComplete) / (criticalFields.length + secondaryFields.length)) * 100
+      
+      return {
+        ...patient,
+        criticalComplete,
+        criticalTotal: criticalFields.length,
+        criticalPercentage,
+        secondaryComplete,
+        secondaryTotal: secondaryFields.length,
+        secondaryPercentage,
+        overallPercentage,
+        completionLevel: overallPercentage >= 80 ? 'high' : overallPercentage >= 50 ? 'medium' : 'low'
+      }
+    }
+    
+    return data.map(calculateCompleteness).sort((a, b) => a.overallPercentage - b.overallPercentage)
+  }, [data])
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -924,6 +997,7 @@ export default function CadasilDashboard() {
               { id: "clinical", label: "Progresión Clínica", icon: Activity },
               { id: "geography", label: "Distribución Nacional", icon: MapPin },
               { id: "table", label: "Tabla de Pacientes", icon: Table },
+              { id: "quality", label: "Calidad de Datos", icon: CheckCircle },
               { id: "timeline", label: "Cronograma del Estudio", icon: Calendar },
               { id: "resources", label: "Recursos y Publicaciones", icon: RefreshCw },
             ].map((tab) => (
@@ -2060,6 +2134,176 @@ export default function CadasilDashboard() {
                   MMSE entre paréntesis indica segunda evaluación. 
                   Para ver detalles completos de mutaciones genéticas, consulte la pestaña "Análisis Genético".
                 </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {selectedTab === "quality" && (
+          <div className="space-y-6">
+            {/* Data Quality Overview */}
+            <div className="bg-white p-6 rounded-lg shadow-md">
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-xl font-semibold text-gray-900 flex items-center">
+                  <CheckCircle className="w-6 h-6 mr-2 text-green-600" />
+                  Análisis de Calidad de Datos
+                </h3>
+                <div className="text-sm text-gray-600">
+                  Total de pacientes: {patientCompleteness.length}
+                </div>
+              </div>
+
+              {/* Completion Summary */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                <div className="bg-green-50 p-4 rounded-lg border border-green-200">
+                  <div className="flex items-center">
+                    <CheckCircle className="w-8 h-8 text-green-600" />
+                    <div className="ml-3">
+                      <p className="text-sm font-medium text-green-900">Alta Completitud (≥80%)</p>
+                      <p className="text-2xl font-bold text-green-900">
+                        {patientCompleteness.filter(p => p.completionLevel === 'high').length}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+                <div className="bg-yellow-50 p-4 rounded-lg border border-yellow-200">
+                  <div className="flex items-center">
+                    <AlertCircle className="w-8 h-8 text-yellow-600" />
+                    <div className="ml-3">
+                      <p className="text-sm font-medium text-yellow-900">Completitud Media (50-79%)</p>
+                      <p className="text-2xl font-bold text-yellow-900">
+                        {patientCompleteness.filter(p => p.completionLevel === 'medium').length}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+                <div className="bg-red-50 p-4 rounded-lg border border-red-200">
+                  <div className="flex items-center">
+                    <AlertCircle className="w-8 h-8 text-red-600" />
+                    <div className="ml-3">
+                      <p className="text-sm font-medium text-red-900">Baja Completitud (&lt;50%)</p>
+                      <p className="text-2xl font-bold text-red-900">
+                        {patientCompleteness.filter(p => p.completionLevel === 'low').length}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Patient Review Table */}
+              <div className="bg-gray-50 p-4 rounded-lg">
+                <h4 className="text-lg font-semibold mb-4 text-gray-900">
+                  Pacientes Ordenados por Completitud (Menor a Mayor)
+                </h4>
+                <div className="overflow-x-auto">
+                  <table className="min-w-full bg-white rounded-lg shadow">
+                    <thead className="bg-gray-100">
+                      <tr>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                          Paciente
+                        </th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                          ID
+                        </th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                          Datos Críticos
+                        </th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                          Datos Secundarios
+                        </th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                          Completitud Total
+                        </th>
+                        <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">
+                          Estado
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-200">
+                      {patientCompleteness.map((patient, index) => (
+                        <tr key={patient.record_id || index} className="hover:bg-gray-50">
+                          <td className="px-4 py-3">
+                            <div className="text-sm font-medium text-gray-900">
+                              {patient.nombre_apellido || 'Sin nombre'}
+                            </div>
+                            <div className="text-sm text-gray-500">
+                              {patient.sexo === 1 ? 'Masculino' : patient.sexo === 2 ? 'Femenino' : 'No esp.'} 
+                              {patient.edad_inicio && `, ${patient.edad_inicio} años`}
+                            </div>
+                          </td>
+                          <td className="px-4 py-3 text-sm text-gray-900">
+                            {patient.record_id || 'N/A'}
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="flex items-center">
+                              <div className="w-16 bg-gray-200 rounded-full h-2 mr-2">
+                                <div 
+                                  className="bg-blue-600 h-2 rounded-full" 
+                                  style={{ width: `${patient.criticalPercentage}%` }}
+                                ></div>
+                              </div>
+                              <span className="text-sm text-gray-900">
+                                {patient.criticalComplete}/{patient.criticalTotal} ({Math.round(patient.criticalPercentage)}%)
+                              </span>
+                            </div>
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="flex items-center">
+                              <div className="w-16 bg-gray-200 rounded-full h-2 mr-2">
+                                <div 
+                                  className="bg-green-600 h-2 rounded-full" 
+                                  style={{ width: `${patient.secondaryPercentage}%` }}
+                                ></div>
+                              </div>
+                              <span className="text-sm text-gray-900">
+                                {patient.secondaryComplete}/{patient.secondaryTotal} ({Math.round(patient.secondaryPercentage)}%)
+                              </span>
+                            </div>
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="flex items-center">
+                              <div className="w-20 bg-gray-200 rounded-full h-3 mr-2">
+                                <div 
+                                  className={`h-3 rounded-full ${
+                                    patient.completionLevel === 'high' ? 'bg-green-500' :
+                                    patient.completionLevel === 'medium' ? 'bg-yellow-500' : 'bg-red-500'
+                                  }`}
+                                  style={{ width: `${patient.overallPercentage}%` }}
+                                ></div>
+                              </div>
+                              <span className="text-sm font-semibold text-gray-900">
+                                {Math.round(patient.overallPercentage)}%
+                              </span>
+                            </div>
+                          </td>
+                          <td className="px-4 py-3">
+                            <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                              patient.completionLevel === 'high' ? 'bg-green-100 text-green-800' :
+                              patient.completionLevel === 'medium' ? 'bg-yellow-100 text-yellow-800' :
+                              'bg-red-100 text-red-800'
+                            }`}>
+                              {patient.completionLevel === 'high' ? 'Completo' :
+                               patient.completionLevel === 'medium' ? 'Parcial' : 'Incompleto'}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+              {/* Data Quality Notes */}
+              <div className="bg-blue-50 p-4 rounded-lg border border-blue-200 mt-6">
+                <h5 className="font-semibold text-blue-900 mb-2">Definición de Campos:</h5>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-blue-800">
+                  <div>
+                    <strong>Datos Críticos:</strong> Nombre, sexo, fecha nacimiento, provincia, síntoma inicial, edad inicio, método diagnóstico, antecedentes familiares, resultado genético
+                  </div>
+                  <div>
+                    <strong>Datos Secundarios:</strong> Médico derivante, institución, historia clínica, ciudad, dominancia, escolaridad, diagnóstico inicial, exón, MMSE, fecha ACV
+                  </div>
+                </div>
               </div>
             </div>
           </div>
