@@ -7,7 +7,15 @@
       "Bash(gh auth:*)",
       "Bash(git config:*)",
       "Bash(git remote add:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git push:*)",
+      "Bash(npm install:*)",
+      "Bash(npx tsc:*)",
+      "Bash(npm run build:*)",
+      "Bash(git commit:*)",
+      "Bash(cat:*)",
+      "Bash(npm run vercel-build:*)",
+      "Bash(git remote set-url:*)"
     ],
     "defaultMode": "acceptEdits"
   }
