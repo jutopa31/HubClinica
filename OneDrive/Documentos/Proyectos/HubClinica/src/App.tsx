@@ -1,4 +1,3 @@
-import React from 'react';
 import HubMedicina from './components/HubMedicina';
 import './index.css';
 

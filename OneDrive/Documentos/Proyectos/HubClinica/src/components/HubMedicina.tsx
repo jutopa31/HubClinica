@@ -16,7 +16,6 @@ import {
   Plane,
   Plus,
   Edit3,
-  Save,
   X,
   MapPin,
   Users,
@@ -92,23 +91,6 @@ interface GrupoGuardia {
   colorClaro: string;
 }
 
-// Interfaces para sistema editable (preparadas para Supabase)
-interface AsignacionMedico {
-  id: string;
-  medicoId: string;
-  sectorId: string;
-  fechaInicio: string;
-  fechaFin?: string;
-  estemporal: boolean;
-  motivo?: string;
-  posicion: number; // posición en el sector
-}
-
-interface EditableSlot {
-  sectorId: string;
-  posicion: number;
-  medicoAsignado?: Medico;
-}
 
 // Sample Data con nombres de Harry Potter
 const gruposGuardia: GrupoGuardia[] = [

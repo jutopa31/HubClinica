@@ -4,7 +4,13 @@
       "Bash(mkdir:*)",
       "Bash(npm install)",
       "Bash(npm run dev:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git remote set-url:*)",
+      "Bash(git push:*)",
+      "Read(C:\\Users\\julia\\onedrive\\documentos\\proyectos/**)",
+      "Read(C:\\Users\\julia\\onedrive\\documentos\\proyectos\\CADASILAR/**)",
+      "Bash(npm run build:*)",
+      "Bash(git commit:*)"
     ],
     "deny": [],
     "ask": []
