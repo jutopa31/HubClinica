@@ -5,12 +5,10 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "npm run typecheck && npm run vite-build",
-    "vite-build": "vite build",
-    "vercel-build": "npm run build",
+    "dev": "./node_modules/.bin/vite",
+    "build": "node build.js",
     "lint": "eslint . --ext ts,tsx --report-unused-disable-directives --max-warnings 0",
-    "preview": "vite preview",
+    "preview": "./node_modules/.bin/vite preview",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
