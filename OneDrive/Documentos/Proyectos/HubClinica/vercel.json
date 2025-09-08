@@ -1,9 +1,8 @@
 {
   "buildCommand": "npm run build",
-  "outputDirectory": "OneDrive/Documentos/Proyectos/HubClinica/dist",
+  "outputDirectory": "dist",
   "installCommand": "npm install",
   "framework": null,
-  "rootDirectory": "OneDrive/Documentos/Proyectos/HubClinica",
   "rewrites": [
     {
       "source": "/(.*)",

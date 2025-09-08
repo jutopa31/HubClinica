@@ -814,7 +814,7 @@ class PredictiveAnalyzer {
     );
   }
 
-  private static getActiveReassignments(medicos: Medico[], eventualidades: Eventualidad[], fecha: string, sectorId: string) {
+  private static getActiveReassignments(_medicos: Medico[], eventualidades: Eventualidad[], fecha: string, sectorId: string) {
     return eventualidades.filter(e => 
       e.tipo === 'reasignacion' && 
       e.fechaInicio <= fecha && 
@@ -1594,7 +1594,7 @@ const ComprehensiveWeeklyCalendar: React.FC<{
   eventualidades: Eventualidad[];
   fechaActual: Date;
   pisos: PisoHospital[];
-}> = ({ medicos, eventualidades, fechaActual, pisos }) => {
+}> = ({ medicos, eventualidades, fechaActual, pisos: _pisos }) => {
   
   const dias = Array.from({ length: 7 }, (_, i) => {
     const fecha = new Date(fechaActual);
