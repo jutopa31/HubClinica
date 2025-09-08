@@ -10,7 +10,13 @@
       "Read(C:\\Users\\julia\\onedrive\\documentos\\proyectos/**)",
       "Read(C:\\Users\\julia\\onedrive\\documentos\\proyectos\\CADASILAR/**)",
       "Bash(npm run build:*)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "WebFetch(domain:github.com)",
+      "Bash(git config:*)",
+      "Read(\\/**)",
+      "WebFetch(domain:hub-clinica.vercel.app)",
+      "Bash(git clone:*)",
+      "Bash(cat:*)"
     ],
     "deny": [],
     "ask": []

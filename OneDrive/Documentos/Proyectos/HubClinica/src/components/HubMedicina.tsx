@@ -408,6 +408,684 @@ const EventualidadModal: React.FC<{
   );
 };
 
+// Vacation Bulk Loader Component
+interface BulkVacationEntry {
+  medicoId: string;
+  fechaInicio: string;
+  fechaFin: string;
+  motivo: string;
+  valid: boolean;
+  errors: string[];
+}
+
+const VacationBulkLoader: React.FC<{
+  isOpen: boolean;
+  onClose: () => void;
+  medicos: Medico[];
+  onSubmit: (vacations: Omit<Eventualidad, 'id'>[]) => void;
+}> = ({ isOpen, onClose, medicos, onSubmit }) => {
+  const [entries, setEntries] = useState<BulkVacationEntry[]>([]);
+  const [csvText, setCsvText] = useState('');
+  const [showManualInput, setShowManualInput] = useState(false);
+
+  const addEmptyEntry = () => {
+    setEntries([...entries, {
+      medicoId: '',
+      fechaInicio: '',
+      fechaFin: '',
+      motivo: '',
+      valid: false,
+      errors: []
+    }]);
+  };
+
+  const updateEntry = (index: number, field: keyof BulkVacationEntry, value: string) => {
+    const newEntries = [...entries];
+    newEntries[index] = { ...newEntries[index], [field]: value };
+    newEntries[index] = validateEntry(newEntries[index]);
+    setEntries(newEntries);
+  };
+
+  const validateEntry = (entry: BulkVacationEntry): BulkVacationEntry => {
+    const errors: string[] = [];
+    
+    if (!entry.medicoId) errors.push('Seleccione un médico');
+    if (!entry.fechaInicio) errors.push('Fecha de inicio requerida');
+    if (!entry.fechaFin) errors.push('Fecha de fin requerida');
+    if (!entry.motivo) errors.push('Motivo requerido');
+    
+    if (entry.fechaInicio && entry.fechaFin && entry.fechaInicio >= entry.fechaFin) {
+      errors.push('Fecha fin debe ser posterior a fecha inicio');
+    }
+
+    return {
+      ...entry,
+      valid: errors.length === 0,
+      errors
+    };
+  };
+
+  const removeEntry = (index: number) => {
+    setEntries(entries.filter((_, i) => i !== index));
+  };
+
+  const parseCsvInput = () => {
+    const lines = csvText.split('\n').filter(line => line.trim());
+    const newEntries: BulkVacationEntry[] = [];
+    
+    lines.forEach((line, index) => {
+      if (index === 0 && (line.toLowerCase().includes('nombre') || line.toLowerCase().includes('medico'))) {
+        return; // Skip header
+      }
+      
+      const [nombreCompleto, fechaInicio, fechaFin, motivo] = line.split(',').map(s => s.trim());
+      
+      if (nombreCompleto && fechaInicio && fechaFin) {
+        // Find medico by name
+        const medico = medicos.find(m => 
+          `${m.nombre} ${m.apellido}`.toLowerCase() === nombreCompleto.toLowerCase()
+        );
+        
+        const entry: BulkVacationEntry = {
+          medicoId: medico?.id || '',
+          fechaInicio,
+          fechaFin,
+          motivo: motivo || 'Vacaciones programadas',
+          valid: false,
+          errors: []
+        };
+        
+        if (!medico) {
+          entry.errors.push(`No se encontró médico: ${nombreCompleto}`);
+        }
+        
+        newEntries.push(validateEntry(entry));
+      }
+    });
+    
+    setEntries(newEntries);
+    setCsvText('');
+  };
+
+  const handleSubmit = () => {
+    const validEntries = entries.filter(e => e.valid);
+    
+    if (validEntries.length === 0) {
+      alert('No hay entradas válidas para enviar');
+      return;
+    }
+
+    const vacations: Omit<Eventualidad, 'id'>[] = validEntries.map(entry => ({
+      tipo: 'vacaciones',
+      medicoId: entry.medicoId,
+      fechaInicio: entry.fechaInicio,
+      fechaFin: entry.fechaFin,
+      motivo: entry.motivo,
+      estado: 'pendiente'
+    }));
+
+    onSubmit(vacations);
+    setEntries([]);
+    onClose();
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <div className="bg-white rounded-lg shadow-xl max-w-6xl w-full mx-4 max-h-[90vh] overflow-hidden">
+        <div className="px-6 py-4 border-b border-gray-200">
+          <div className="flex items-center justify-between">
+            <h2 className="text-xl font-semibold text-gray-900 flex items-center">
+              <Plane className="h-5 w-5 mr-2" />
+              Carga Masiva de Vacaciones
+            </h2>
+            <button
+              onClick={onClose}
+              className="text-gray-400 hover:text-gray-600 transition-colors"
+            >
+              <X className="h-6 w-6" />
+            </button>
+          </div>
+        </div>
+        
+        <div className="p-6 overflow-y-auto max-h-[calc(90vh-180px)]">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* CSV Input Section */}
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-medium text-gray-900">Importar desde CSV</h3>
+                <button
+                  onClick={() => setShowManualInput(!showManualInput)}
+                  className="text-sm text-blue-600 hover:text-blue-700"
+                >
+                  {showManualInput ? 'Usar CSV' : 'Entrada Manual'}
+                </button>
+              </div>
+              
+              {!showManualInput ? (
+                <div className="space-y-3">
+                  <div className="text-sm text-gray-600">
+                    <p>Formato: Nombre Completo, Fecha Inicio (YYYY-MM-DD), Fecha Fin (YYYY-MM-DD), Motivo</p>
+                    <p className="mt-1">Ejemplo: Dr. Carlos González, 2025-02-01, 2025-02-15, Vacaciones anuales</p>
+                  </div>
+                  <textarea
+                    value={csvText}
+                    onChange={(e) => setCsvText(e.target.value)}
+                    placeholder="Pegue aquí los datos CSV..."
+                    className="w-full h-32 p-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                  />
+                  <button
+                    onClick={parseCsvInput}
+                    disabled={!csvText.trim()}
+                    className="w-full px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-300 transition-colors"
+                  >
+                    Procesar CSV
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <button
+                    onClick={addEmptyEntry}
+                    className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center justify-center"
+                  >
+                    <Plus className="h-4 w-4 mr-2" />
+                    Agregar Entrada
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* Preview Section */}
+            <div className="space-y-4">
+              <h3 className="text-lg font-medium text-gray-900">
+                Vista Previa ({entries.length} entradas, {entries.filter(e => e.valid).length} válidas)
+              </h3>
+              
+              <div className="max-h-60 overflow-y-auto space-y-2">
+                {entries.map((entry, index) => {
+                  const medico = medicos.find(m => m.id === entry.medicoId);
+                  return (
+                    <div
+                      key={index}
+                      className={`p-3 border rounded-lg ${entry.valid ? 'border-green-300 bg-green-50' : 'border-red-300 bg-red-50'}`}
+                    >
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <div className="text-sm font-medium">
+                            {medico ? `${medico.nombre} ${medico.apellido}` : 'Médico no encontrado'}
+                          </div>
+                          <div className="text-xs text-gray-600">
+                            {entry.fechaInicio} - {entry.fechaFin}
+                          </div>
+                          <div className="text-xs text-gray-600">{entry.motivo}</div>
+                          {entry.errors.length > 0 && (
+                            <div className="text-xs text-red-600 mt-1">
+                              {entry.errors.join(', ')}
+                            </div>
+                          )}
+                        </div>
+                        <button
+                          onClick={() => removeEntry(index)}
+                          className="text-red-500 hover:text-red-700 ml-2"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
+          {/* Manual Input Form */}
+          {showManualInput && entries.length > 0 && (
+            <div className="mt-6 space-y-4">
+              <h3 className="text-lg font-medium text-gray-900">Entradas Manuales</h3>
+              {entries.map((entry, index) => (
+                <div key={index} className="grid grid-cols-1 md:grid-cols-5 gap-3 p-4 border rounded-lg">
+                  <select
+                    value={entry.medicoId}
+                    onChange={(e) => updateEntry(index, 'medicoId', e.target.value)}
+                    className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                  >
+                    <option value="">Seleccionar médico...</option>
+                    {medicos.map(medico => (
+                      <option key={medico.id} value={medico.id}>
+                        {medico.nombre} {medico.apellido}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    type="date"
+                    value={entry.fechaInicio}
+                    onChange={(e) => updateEntry(index, 'fechaInicio', e.target.value)}
+                    className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                  />
+                  <input
+                    type="date"
+                    value={entry.fechaFin}
+                    onChange={(e) => updateEntry(index, 'fechaFin', e.target.value)}
+                    className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                  />
+                  <input
+                    type="text"
+                    placeholder="Motivo..."
+                    value={entry.motivo}
+                    onChange={(e) => updateEntry(index, 'motivo', e.target.value)}
+                    className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent text-sm"
+                  />
+                  <button
+                    onClick={() => removeEntry(index)}
+                    className="px-3 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="px-6 py-4 border-t border-gray-200 flex justify-between">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={handleSubmit}
+            disabled={entries.filter(e => e.valid).length === 0}
+            className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-300 transition-colors"
+          >
+            Cargar {entries.filter(e => e.valid).length} Vacaciones
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Predictive Analysis Interfaces
+interface PredictiveAlert {
+  id: string;
+  fecha: string;
+  tipo: 'shortage' | 'imbalance' | 'critical';
+  sector?: string;
+  severidad: 'low' | 'medium' | 'high' | 'critical';
+  mensaje: string;
+  doctoresAfectados: string[];
+  recomendaciones: string[];
+}
+
+interface StaffingPrediction {
+  fecha: string;
+  sectores: {
+    [sectorId: string]: {
+      requeridos: number;
+      disponibles: number;
+      enVacaciones: string[];
+      deficit: number;
+      estado: 'optimal' | 'minimal' | 'critical';
+    };
+  };
+  alertas: PredictiveAlert[];
+}
+
+// Predictive Analysis Engine
+class PredictiveAnalyzer {
+  static analyzeStaffing(
+    medicos: Medico[], 
+    pisos: PisoHospital[], 
+    eventualidades: Eventualidad[],
+    fechaInicio: Date,
+    fechaFin: Date
+  ): StaffingPrediction[] {
+    const predictions: StaffingPrediction[] = [];
+    const currentDate = new Date(fechaInicio);
+
+    while (currentDate <= fechaFin) {
+      const fechaStr = currentDate.toISOString().split('T')[0];
+      
+      const prediction: StaffingPrediction = {
+        fecha: fechaStr,
+        sectores: {},
+        alertas: []
+      };
+
+      // Analyze each sector for this date
+      pisos.forEach(piso => {
+        const medicosDelSector = medicos.filter(m => m.pisoAsignado === piso.id);
+        const vacacionesActivas = this.getActiveVacations(medicosDelSector, eventualidades, fechaStr);
+        const reasignacionesActivas = this.getActiveReassignments(medicos, eventualidades, fechaStr, piso.id);
+        
+        const medicosEnVacaciones = vacacionesActivas.map(v => v.medicoId);
+        const medicosDisponibles = medicosDelSector.length - medicosEnVacaciones.length + reasignacionesActivas.length;
+        const deficit = piso.medicosRequeridos - medicosDisponibles;
+
+        let estado: 'optimal' | 'minimal' | 'critical' = 'optimal';
+        if (medicosDisponibles < piso.minimoMedicos) {
+          estado = 'critical';
+        } else if (medicosDisponibles === piso.minimoMedicos) {
+          estado = 'minimal';
+        }
+
+        prediction.sectores[piso.id] = {
+          requeridos: piso.medicosRequeridos,
+          disponibles: medicosDisponibles,
+          enVacaciones: medicosEnVacaciones,
+          deficit,
+          estado
+        };
+
+        // Generate alerts for this sector
+        if (deficit > 0) {
+          const alert: PredictiveAlert = {
+            id: `alert_${fechaStr}_${piso.id}`,
+            fecha: fechaStr,
+            tipo: deficit >= 3 ? 'critical' : deficit >= 2 ? 'shortage' : 'imbalance',
+            sector: piso.id,
+            severidad: deficit >= 3 ? 'critical' : deficit >= 2 ? 'high' : 'medium',
+            mensaje: `Déficit de ${deficit} médico${deficit > 1 ? 's' : ''} en sector ${piso.id}`,
+            doctoresAfectados: medicosEnVacaciones,
+            recomendaciones: this.generateRecommendations(deficit, piso, medicosEnVacaciones, medicos)
+          };
+          prediction.alertas.push(alert);
+        }
+      });
+
+      predictions.push(prediction);
+      
+      // Move to next day
+      currentDate.setDate(currentDate.getDate() + 1);
+    }
+
+    return predictions;
+  }
+
+  private static getActiveVacations(medicos: Medico[], eventualidades: Eventualidad[], fecha: string) {
+    return eventualidades.filter(e => 
+      e.tipo === 'vacaciones' && 
+      e.fechaInicio <= fecha && 
+      e.fechaFin >= fecha &&
+      medicos.some(m => m.id === e.medicoId)
+    );
+  }
+
+  private static getActiveReassignments(medicos: Medico[], eventualidades: Eventualidad[], fecha: string, sectorId: string) {
+    return eventualidades.filter(e => 
+      e.tipo === 'reasignacion' && 
+      e.fechaInicio <= fecha && 
+      e.fechaFin >= fecha &&
+      e.detalles?.pisoDestino === sectorId
+    );
+  }
+
+  private static generateRecommendations(deficit: number, piso: PisoHospital, medicosEnVacaciones: string[], todosLosMedicos: Medico[]): string[] {
+    const recomendaciones = [];
+    
+    if (deficit >= 3) {
+      recomendaciones.push('Suspender algunas vacaciones programadas');
+      recomendaciones.push('Solicitar médicos de otros sectores');
+      recomendaciones.push('Activar protocolo de emergencia de personal');
+    } else if (deficit >= 2) {
+      recomendaciones.push('Reprogramar vacaciones si es posible');
+      recomendaciones.push('Considerar reasignaciones temporales');
+    } else {
+      recomendaciones.push('Monitorear situación de cerca');
+      recomendaciones.push('Tener médicos de respaldo identificados');
+    }
+
+    // Find available doctors from other sectors
+    const medicosDisponiblesOtrosSectores = todosLosMedicos.filter(m => 
+      m.pisoAsignado !== piso.id && 
+      m.estado === 'disponible' &&
+      !medicosEnVacaciones.includes(m.id)
+    );
+
+    if (medicosDisponiblesOtrosSectores.length > 0) {
+      recomendaciones.push(`Considerar reasignar desde: ${medicosDisponiblesOtrosSectores.slice(0, 3).map(m => `${m.nombre} ${m.apellido} (${m.pisoAsignado})`).join(', ')}`);
+    }
+
+    return recomendaciones;
+  }
+}
+
+// Predictive Analysis Dashboard Component
+const PredictiveAnalysisDashboard: React.FC<{
+  isOpen: boolean;
+  onClose: () => void;
+  medicos: Medico[];
+  pisos: PisoHospital[];
+  eventualidades: Eventualidad[];
+}> = ({ isOpen, onClose, medicos, pisos, eventualidades }) => {
+  const [dateRange, setDateRange] = useState({
+    start: new Date().toISOString().split('T')[0],
+    end: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000).toISOString().split('T')[0] // 90 days from now
+  });
+  const [predictions, setPredictions] = useState<StaffingPrediction[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  const runAnalysis = () => {
+    setLoading(true);
+    
+    setTimeout(() => {
+      const startDate = new Date(dateRange.start);
+      const endDate = new Date(dateRange.end);
+      
+      const results = PredictiveAnalyzer.analyzeStaffing(medicos, pisos, eventualidades, startDate, endDate);
+      setPredictions(results);
+      setLoading(false);
+    }, 1500); // Simulate processing time
+  };
+
+  const criticalAlerts = predictions.flatMap(p => p.alertas.filter(a => a.severidad === 'critical'));
+  const highAlerts = predictions.flatMap(p => p.alertas.filter(a => a.severidad === 'high'));
+  const mediumAlerts = predictions.flatMap(p => p.alertas.filter(a => a.severidad === 'medium'));
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <div className="bg-white rounded-lg shadow-xl max-w-7xl w-full mx-4 max-h-[95vh] overflow-hidden">
+        <div className="px-6 py-4 border-b border-gray-200">
+          <div className="flex items-center justify-between">
+            <h2 className="text-xl font-semibold text-gray-900 flex items-center">
+              <BarChart3 className="h-5 w-5 mr-2" />
+              Análisis Predictivo de Personal
+            </h2>
+            <button
+              onClick={onClose}
+              className="text-gray-400 hover:text-gray-600 transition-colors"
+            >
+              <X className="h-6 w-6" />
+            </button>
+          </div>
+        </div>
+        
+        <div className="p-6 overflow-y-auto max-h-[calc(95vh-180px)]">
+          {/* Controls */}
+          <div className="bg-gray-50 rounded-lg p-4 mb-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Fecha Inicio</label>
+                <input
+                  type="date"
+                  value={dateRange.start}
+                  onChange={(e) => setDateRange(prev => ({ ...prev, start: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Fecha Fin</label>
+                <input
+                  type="date"
+                  value={dateRange.end}
+                  onChange={(e) => setDateRange(prev => ({ ...prev, end: e.target.value }))}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
+              <div>
+                <button
+                  onClick={runAnalysis}
+                  disabled={loading}
+                  className="w-full px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 transition-colors flex items-center justify-center"
+                >
+                  {loading ? (
+                    <>
+                      <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                      Analizando...
+                    </>
+                  ) : (
+                    <>
+                      <BarChart3 className="h-4 w-4 mr-2" />
+                      Ejecutar Análisis
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {predictions.length > 0 && (
+            <>
+              {/* Summary Cards */}
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                  <div className="flex items-center">
+                    <AlertTriangle className="h-8 w-8 text-red-500 mr-3" />
+                    <div>
+                      <div className="text-2xl font-bold text-red-900">{criticalAlerts.length}</div>
+                      <div className="text-sm text-red-700">Alertas Críticas</div>
+                    </div>
+                  </div>
+                </div>
+                <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
+                  <div className="flex items-center">
+                    <Bell className="h-8 w-8 text-orange-500 mr-3" />
+                    <div>
+                      <div className="text-2xl font-bold text-orange-900">{highAlerts.length}</div>
+                      <div className="text-sm text-orange-700">Alertas Altas</div>
+                    </div>
+                  </div>
+                </div>
+                <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                  <div className="flex items-center">
+                    <Clock className="h-8 w-8 text-yellow-500 mr-3" />
+                    <div>
+                      <div className="text-2xl font-bold text-yellow-900">{mediumAlerts.length}</div>
+                      <div className="text-sm text-yellow-700">Alertas Medias</div>
+                    </div>
+                  </div>
+                </div>
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                  <div className="flex items-center">
+                    <Calendar className="h-8 w-8 text-blue-500 mr-3" />
+                    <div>
+                      <div className="text-2xl font-bold text-blue-900">{predictions.length}</div>
+                      <div className="text-sm text-blue-700">Días Analizados</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Timeline View */}
+              <div className="bg-white border rounded-lg overflow-hidden">
+                <div className="px-4 py-3 bg-gray-50 border-b">
+                  <h3 className="text-lg font-medium text-gray-900">Línea de Tiempo de Alertas</h3>
+                </div>
+                <div className="max-h-96 overflow-y-auto">
+                  {predictions.filter(p => p.alertas.length > 0).map(prediction => (
+                    <div key={prediction.fecha} className="border-b border-gray-200 p-4">
+                      <div className="flex items-start justify-between mb-3">
+                        <div className="font-medium text-gray-900">
+                          {new Date(prediction.fecha).toLocaleDateString('es-ES', { 
+                            weekday: 'long', 
+                            year: 'numeric', 
+                            month: 'long', 
+                            day: 'numeric' 
+                          })}
+                        </div>
+                        <div className="text-sm text-gray-500">
+                          {prediction.alertas.length} alerta{prediction.alertas.length !== 1 ? 's' : ''}
+                        </div>
+                      </div>
+                      
+                      <div className="space-y-2">
+                        {prediction.alertas.map(alert => (
+                          <div 
+                            key={alert.id}
+                            className={`p-3 rounded-lg border-l-4 ${
+                              alert.severidad === 'critical' ? 'bg-red-50 border-red-500' :
+                              alert.severidad === 'high' ? 'bg-orange-50 border-orange-500' :
+                              'bg-yellow-50 border-yellow-500'
+                            }`}
+                          >
+                            <div className="flex items-start justify-between">
+                              <div className="flex-1">
+                                <div className={`font-medium ${
+                                  alert.severidad === 'critical' ? 'text-red-900' :
+                                  alert.severidad === 'high' ? 'text-orange-900' :
+                                  'text-yellow-900'
+                                }`}>
+                                  {alert.mensaje}
+                                </div>
+                                <div className="text-sm text-gray-600 mt-1">
+                                  <strong>Recomendaciones:</strong> {alert.recomendaciones.slice(0, 2).join(', ')}
+                                  {alert.recomendaciones.length > 2 && '...'}
+                                </div>
+                              </div>
+                              <div className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                alert.severidad === 'critical' ? 'bg-red-200 text-red-800' :
+                                alert.severidad === 'high' ? 'bg-orange-200 text-orange-800' :
+                                'bg-yellow-200 text-yellow-800'
+                              }`}>
+                                {alert.severidad === 'critical' ? 'CRÍTICO' :
+                                 alert.severidad === 'high' ? 'ALTO' : 'MEDIO'}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+
+        <div className="px-6 py-4 border-t border-gray-200 flex justify-between">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+          >
+            Cerrar
+          </button>
+          {predictions.length > 0 && (
+            <button
+              onClick={() => {
+                const data = JSON.stringify(predictions, null, 2);
+                const blob = new Blob([data], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `analisis-predictivo-${dateRange.start}-${dateRange.end}.json`;
+                a.click();
+              }}
+              className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors"
+            >
+              Exportar Análisis
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // Doctor Card with Actions
 const DoctorCard: React.FC<{
   medico: Medico;
@@ -431,8 +1109,8 @@ const DoctorCard: React.FC<{
 
   const getEstadoText = () => {
     switch (medico.estado) {
-      case 'disponible': return 'Disponible';
-      case 'guardia': return 'En Guardia';
+      case 'disponible': return 'Licenciados';
+      case 'guardia': return 'De turno';
       case 'franco': return 'Franco';
       case 'vacaciones': return 'Vacaciones';
       case 'ausente': return 'Ausente';
@@ -718,8 +1396,8 @@ const DoctorSearchModal: React.FC<{
                             medico.estado === 'vacaciones' ? 'bg-purple-100 text-purple-800' :
                             'bg-gray-100 text-gray-800'
                           }`}>
-                            {medico.estado === 'disponible' ? 'Disponible' :
-                             medico.estado === 'guardia' ? 'Guardia' :
+                            {medico.estado === 'disponible' ? 'Licenciados' :
+                             medico.estado === 'guardia' ? 'De turno' :
                              medico.estado === 'vacaciones' ? 'Vacaciones' :
                              medico.estado}
                           </div>
@@ -764,138 +1442,400 @@ const TablaSectoresMedicos: React.FC<{
 }> = ({ pisos, medicosDisponibles, fecha, onEditSlot, editable = false }) => {
   
   const getStatusColor = (cantidadMedicos: number, minimo: number) => {
-    if (cantidadMedicos < minimo) return 'bg-red-100 border-red-300';
-    if (cantidadMedicos === minimo) return 'bg-yellow-100 border-yellow-300';
-    return 'bg-green-100 border-green-300';
+    if (cantidadMedicos < minimo) return 'bg-red-50 border-red-200';
+    if (cantidadMedicos === minimo) return 'bg-yellow-50 border-yellow-200';
+    return 'bg-green-50 border-green-200';
   };
 
   // Obtener el máximo número de médicos en cualquier piso para determinar las filas
   const maxMedicos = Math.max(...pisos.map(piso => 
     medicosDisponibles.filter(m => m.pisoAsignado === piso.id).length
-  ), 8); // Mínimo 8 filas para mostrar
+  ), 10); // Mínimo 10 filas para mostrar
 
   return (
-    <div className="bg-white rounded-lg shadow-sm border overflow-hidden">
-      <div className="px-6 py-4 bg-gray-50 border-b">
-        <h3 className="text-lg font-semibold text-gray-900 flex items-center">
-          <Building className="h-5 w-5 mr-2" />
-          Distribución de Sectores - Clínica Médica - {fecha.toLocaleDateString('es-ES')}
+    <div className="bg-white rounded-md shadow-sm border overflow-hidden">
+      {/* Compact header */}
+      <div className="px-3 py-2 bg-gray-100 border-b border-gray-200">
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-gray-800 flex items-center">
+            <Building className="h-4 w-4 mr-2" />
+            Distribución de Sectores - {fecha.toLocaleDateString('es-ES')}
+          </h3>
           {editable && (
-            <span className="ml-3 text-sm font-normal text-blue-600 bg-blue-100 px-2 py-1 rounded">
-              Modo Edición
+            <span className="text-xs text-blue-700 bg-blue-100 px-2 py-0.5 rounded-sm">
+              Edición Activa
             </span>
           )}
-        </h3>
+        </div>
       </div>
       
-      <div className="overflow-x-auto">
-        <table className="w-full border-collapse">
-          {/* Encabezados de Pisos */}
-          <thead>
-            <tr>
-              <td className="border border-gray-300 p-2 bg-gray-100 font-medium text-gray-600 text-center">
-                Médicos
-              </td>
+      {/* Excel-style compact grid */}
+      <div className="overflow-x-auto max-h-96">
+        <div className="inline-block min-w-full">
+          {/* Fixed headers */}
+          <div className="sticky top-0 bg-white border-b border-gray-300 z-10">
+            <div className="grid grid-flow-col auto-cols-fr gap-0" style={{gridTemplateColumns: '60px repeat(' + pisos.length + ', minmax(140px, 1fr))'}}>
+              {/* Row number header */}
+              <div className="border-r border-gray-300 bg-gray-50 px-2 py-1 text-center text-xs font-medium text-gray-600">
+                #
+              </div>
+              
+              {/* Sector headers */}
               {pisos.map((piso) => {
                 const medicosDelPiso = medicosDisponibles.filter(m => m.pisoAsignado === piso.id);
                 const cantidadMedicos = medicosDelPiso.length;
                 
                 return (
-                  <th key={piso.id} className={`border border-gray-300 p-3 text-center min-w-32 ${getStatusColor(cantidadMedicos, piso.minimoMedicos)}`}>
-                    <div className="space-y-1">
-                      <div className="flex items-center justify-center space-x-2">
-                        <div className={`w-3 h-3 rounded-full ${piso.color}`}></div>
-                        <span className="font-bold text-gray-900">{piso.id}</span>
-                      </div>
-                      <div className="text-xs text-gray-600">Clínica Médica</div>
-                      <div className="text-sm font-semibold">
-                        {cantidadMedicos}/{piso.medicosRequeridos}
-                        <span className="text-xs text-gray-500 block">
-                          (mín: {piso.minimoMedicos})
-                        </span>
-                      </div>
-                      <div className={`px-2 py-1 rounded-full text-xs font-medium ${
-                        cantidadMedicos < piso.minimoMedicos ? 'bg-red-200 text-red-800' :
-                        cantidadMedicos === piso.minimoMedicos ? 'bg-yellow-200 text-yellow-800' :
-                        'bg-green-200 text-green-800'
-                      }`}>
-                        {cantidadMedicos < piso.minimoMedicos ? 'CRÍTICO' :
-                         cantidadMedicos === piso.minimoMedicos ? 'MÍNIMO' : 'ÓPTIMO'}
-                      </div>
+                  <div 
+                    key={piso.id} 
+                    className={`border-r border-gray-300 px-2 py-1 text-center ${getStatusColor(cantidadMedicos, piso.minimoMedicos)}`}
+                  >
+                    <div className="flex items-center justify-center gap-1 mb-1">
+                      <div className={`w-2 h-2 rounded-full ${piso.color}`}></div>
+                      <span className="text-xs font-bold text-gray-900">{piso.id}</span>
                     </div>
-                  </th>
+                    <div className="text-xs font-medium text-gray-700">
+                      {cantidadMedicos}/{piso.medicosRequeridos}
+                    </div>
+                    <div className={`text-xs px-1 py-0.5 rounded-sm ${
+                      cantidadMedicos < piso.minimoMedicos ? 'bg-red-200 text-red-800' :
+                      cantidadMedicos === piso.minimoMedicos ? 'bg-yellow-200 text-yellow-800' :
+                      'bg-green-200 text-green-800'
+                    }`}>
+                      {cantidadMedicos < piso.minimoMedicos ? 'CRÍTICO' :
+                       cantidadMedicos === piso.minimoMedicos ? 'MÍNIMO' : 'ÓPTIMO'}
+                    </div>
+                  </div>
                 );
               })}
-            </tr>
-          </thead>
-          
-          {/* Filas de Médicos */}
-          <tbody>
+            </div>
+          </div>
+
+          {/* Data rows with zebra striping */}
+          <div className="divide-y divide-gray-200">
             {Array.from({ length: maxMedicos }, (_, index) => (
-              <tr key={index}>
-                <td className="border border-gray-300 p-2 bg-gray-50 text-center font-medium text-gray-600">
+              <div 
+                key={index} 
+                className={`grid grid-flow-col auto-cols-fr gap-0 hover:bg-blue-50 ${
+                  index % 2 === 0 ? 'bg-white' : 'bg-gray-50'
+                }`}
+                style={{gridTemplateColumns: '60px repeat(' + pisos.length + ', minmax(140px, 1fr))'}}
+              >
+                {/* Row number */}
+                <div className="border-r border-gray-300 bg-gray-100 px-2 py-1.5 text-center text-xs font-medium text-gray-600">
                   {index + 1}
-                </td>
+                </div>
+                
+                {/* Doctor cells */}
                 {pisos.map((piso) => {
                   const medicosDelPiso = medicosDisponibles.filter(m => m.pisoAsignado === piso.id);
                   const medico = medicosDelPiso[index];
                   
                   return (
-                    <td key={piso.id} className="border border-gray-300 p-2 text-center h-20 align-middle relative group">
+                    <div 
+                      key={piso.id} 
+                      className="border-r border-gray-300 px-1.5 py-1 text-center relative group min-h-[50px] flex items-center justify-center"
+                    >
                       {medico ? (
-                        <div className="space-y-1 relative">
-                          <div className="text-sm font-medium text-gray-900">
+                        <div className="w-full relative">
+                          <div className="text-xs font-medium text-gray-900 leading-tight">
                             {medico.nombre} {medico.apellido}
                           </div>
-                          <div className="text-xs text-gray-600">
-                            {medico.especialidad}
-                          </div>
-                          <div className={`inline-flex items-center px-2 py-1 rounded-full text-xs ${
+                          <div className={`inline-flex items-center px-1.5 py-0.5 rounded-sm text-xs mt-1 ${
                             GuardiaCalculator.getGrupoInfo(medico.grupoGuardia).colorClaro
                           }`}>
-                            <span className="mr-1">
+                            <span className="mr-1 text-xs">
                               {GuardiaCalculator.getGrupoInfo(medico.grupoGuardia).casa}
                             </span>
-                            {GuardiaCalculator.getGrupoInfo(medico.grupoGuardia).nombre}
+                            <span className="text-xs">{GuardiaCalculator.getGrupoInfo(medico.grupoGuardia).nombre}</span>
                           </div>
                           
-                          {/* Edit button - shown on hover */}
+                          {/* Compact edit button */}
                           {editable && onEditSlot && (
                             <button
                               onClick={() => onEditSlot(piso.id, index, medico)}
-                              className="absolute top-0 right-0 opacity-0 group-hover:opacity-100 transition-opacity bg-blue-600 text-white rounded-full p-1 text-xs hover:bg-blue-700"
+                              className="absolute -top-0.5 -right-0.5 opacity-0 group-hover:opacity-100 transition-opacity bg-blue-600 text-white rounded-sm p-0.5 text-xs hover:bg-blue-700"
                               title="Cambiar médico"
                             >
-                              <Edit3 className="h-3 w-3" />
+                              <Edit3 className="h-2.5 w-2.5" />
                             </button>
                           )}
                         </div>
                       ) : (
-                        <div className="relative">
+                        <div className="w-full h-full">
                           {editable && onEditSlot ? (
                             <button
                               onClick={() => onEditSlot(piso.id, index)}
-                              className="w-full h-full flex items-center justify-center text-gray-400 hover:text-blue-600 hover:bg-blue-50 transition-colors rounded group"
+                              className="w-full h-full flex items-center justify-center text-gray-300 hover:text-blue-600 hover:bg-blue-100 transition-colors rounded-sm"
                               title="Asignar médico"
                             >
-                              <div className="flex flex-col items-center space-y-1">
-                                <UserPlus className="h-4 w-4" />
-                                <span className="text-xs">Asignar</span>
-                              </div>
+                              <UserPlus className="h-3 w-3" />
                             </button>
                           ) : (
                             <div className="text-gray-300 text-xs">—</div>
                           )}
                         </div>
                       )}
-                    </td>
+                    </div>
                   );
                 })}
-              </tr>
+              </div>
             ))}
-          </tbody>
-        </table>
+          </div>
+        </div>
       </div>
+    </div>
+  );
+};
+
+// Comprehensive Calendar Components
+const ComprehensiveWeeklyCalendar: React.FC<{
+  medicos: Medico[];
+  eventualidades: Eventualidad[];
+  fechaActual: Date;
+  pisos: PisoHospital[];
+}> = ({ medicos, eventualidades, fechaActual, pisos }) => {
+  
+  const dias = Array.from({ length: 7 }, (_, i) => {
+    const fecha = new Date(fechaActual);
+    fecha.setDate(fechaActual.getDate() + i);
+    return fecha;
+  });
+
+  const getMedicoStatusForDate = (medico: Medico, fecha: Date) => {
+    const fechaStr = fecha.toISOString().split('T')[0];
+    
+    // Check for active vacations
+    const vacacionActiva = eventualidades.find(e => 
+      e.tipo === 'vacaciones' && 
+      e.medicoId === medico.id &&
+      e.fechaInicio <= fechaStr && 
+      e.fechaFin >= fechaStr
+    );
+    
+    if (vacacionActiva) return { status: 'vacaciones', detail: vacacionActiva.motivo };
+    
+    // Check for reassignments
+    const reasignacionActiva = eventualidades.find(e => 
+      e.tipo === 'reasignacion' && 
+      e.medicoId === medico.id &&
+      e.fechaInicio <= fechaStr && 
+      e.fechaFin >= fechaStr
+    );
+    
+    // Check guard schedule
+    const grupoEnGuardia = GuardiaCalculator.calcularGrupoGuardia(fecha);
+    if (medico.grupoGuardia === grupoEnGuardia) {
+      return { status: 'guardia', detail: `Grupo ${grupoEnGuardia}` };
+    }
+    
+    // Check if in franco (post-guard)
+    const fechaAnterior = new Date(fecha);
+    fechaAnterior.setDate(fecha.getDate() - 1);
+    const grupoAnterior = GuardiaCalculator.calcularGrupoGuardia(fechaAnterior);
+    if (medico.grupoGuardia === grupoAnterior) {
+      return { status: 'franco', detail: 'Post guardia' };
+    }
+    
+    return { 
+      status: 'disponible', 
+      detail: reasignacionActiva?.detalles?.pisoDestino || medico.pisoAsignado 
+    };
+  };
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'guardia': return 'bg-blue-500';
+      case 'disponible': return 'bg-green-500';
+      case 'franco': return 'bg-gray-500';
+      case 'vacaciones': return 'bg-purple-500';
+      case 'ausente': return 'bg-red-500';
+      default: return 'bg-gray-300';
+    }
+  };
+
+  return (
+    <table className="w-full">
+      <thead className="bg-gray-50">
+        <tr>
+          <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase sticky left-0 bg-gray-50 z-10">
+            Médico / Sector
+          </th>
+          {dias.map((dia, index) => (
+            <th key={index} className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase min-w-32">
+              <div className="font-medium">
+                {dia.toLocaleDateString('es-ES', { weekday: 'short' })}
+              </div>
+              <div className="text-xs text-gray-400">
+                {dia.getDate()}/{dia.getMonth() + 1}
+              </div>
+            </th>
+          ))}
+        </tr>
+      </thead>
+      <tbody className="bg-white divide-y divide-gray-200">
+        {medicos.map(medico => (
+          <tr key={medico.id} className="hover:bg-gray-50">
+            <td className="px-4 py-3 sticky left-0 bg-white z-10">
+              <div>
+                <div className="text-sm font-medium text-gray-900">
+                  {medico.nombre} {medico.apellido}
+                </div>
+                <div className="text-xs text-gray-500">
+                  {medico.especialidad} • Grupo {medico.grupoGuardia}
+                </div>
+                <div className="text-xs text-gray-400">
+                  Sector: {medico.pisoAsignado}
+                </div>
+              </div>
+            </td>
+            {dias.map((dia, index) => {
+              const statusInfo = getMedicoStatusForDate(medico, dia);
+              const esHoy = dia.toDateString() === new Date().toDateString();
+              
+              return (
+                <td key={index} className={`px-2 py-3 text-center ${esHoy ? 'bg-yellow-50' : ''}`}>
+                  <div className="space-y-1">
+                    <div 
+                      className={`w-6 h-6 mx-auto rounded-full ${getStatusColor(statusInfo.status)} flex items-center justify-center`}
+                      title={`${statusInfo.status}: ${statusInfo.detail}`}
+                    >
+                      <div className="w-2 h-2 bg-white rounded-full"></div>
+                    </div>
+                    <div className="text-xs text-gray-600 max-w-[80px] truncate">
+                      {statusInfo.detail}
+                    </div>
+                  </div>
+                </td>
+              );
+            })}
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+};
+
+const ComprehensiveMonthlyCalendar: React.FC<{
+  medicos: Medico[];
+  eventualidades: Eventualidad[];
+  fechaActual: Date;
+  pisos: PisoHospital[];
+}> = ({ medicos, eventualidades, fechaActual, pisos }) => {
+  
+  const primerDiaMes = new Date(fechaActual.getFullYear(), fechaActual.getMonth(), 1);
+  const ultimoDiaMes = new Date(fechaActual.getFullYear(), fechaActual.getMonth() + 1, 0);
+  const primerDiaSemana = new Date(primerDiaMes);
+  primerDiaSemana.setDate(primerDiaMes.getDate() - primerDiaMes.getDay());
+
+  const dias: Date[] = [];
+  const fechaActualIteracion = new Date(primerDiaSemana);
+  
+  while (fechaActualIteracion <= ultimoDiaMes || dias.length < 35) {
+    dias.push(new Date(fechaActualIteracion));
+    fechaActualIteracion.setDate(fechaActualIteracion.getDate() + 1);
+  }
+
+  const getMedicoStatusForDate = (medico: Medico, fecha: Date) => {
+    const fechaStr = fecha.toISOString().split('T')[0];
+    
+    // Check for active vacations
+    const vacacionActiva = eventualidades.find(e => 
+      e.tipo === 'vacaciones' && 
+      e.medicoId === medico.id &&
+      e.fechaInicio <= fechaStr && 
+      e.fechaFin >= fechaStr
+    );
+    
+    if (vacacionActiva) return 'vacaciones';
+    
+    // Check guard schedule
+    const grupoEnGuardia = GuardiaCalculator.calcularGrupoGuardia(fecha);
+    if (medico.grupoGuardia === grupoEnGuardia) return 'guardia';
+    
+    // Check if in franco
+    const fechaAnterior = new Date(fecha);
+    fechaAnterior.setDate(fecha.getDate() - 1);
+    const grupoAnterior = GuardiaCalculator.calcularGrupoGuardia(fechaAnterior);
+    if (medico.grupoGuardia === grupoAnterior) return 'franco';
+    
+    return 'disponible';
+  };
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'guardia': return 'bg-blue-500';
+      case 'disponible': return 'bg-green-500';
+      case 'franco': return 'bg-gray-500';
+      case 'vacaciones': return 'bg-purple-500';
+      case 'ausente': return 'bg-red-500';
+      default: return 'bg-gray-300';
+    }
+  };
+
+  // Group doctors by sector for better organization
+  const medicosAgrupados = pisos.map(piso => ({
+    piso: piso.nombre,
+    medicos: medicos.filter(m => m.pisoAsignado === piso.id)
+  })).filter(grupo => grupo.medicos.length > 0);
+
+  return (
+    <div className="space-y-6">
+      {medicosAgrupados.map(({ piso, medicos: medicosDelPiso }) => (
+        <div key={piso} className="bg-gray-50 rounded-lg p-4">
+          <h4 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
+            <Building className="h-4 w-4 mr-2" />
+            {piso} ({medicosDelPiso.length} médicos)
+          </h4>
+          
+          <div className="grid grid-cols-7 gap-1 mb-4">
+            {['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'].map(dia => (
+              <div key={dia} className="text-center text-xs font-medium text-gray-500 p-2">
+                {dia}
+              </div>
+            ))}
+          </div>
+          
+          <div className="space-y-2">
+            {medicosDelPiso.map(medico => (
+              <div key={medico.id} className="bg-white rounded border">
+                <div className="px-3 py-2 border-b bg-gray-50">
+                  <div className="text-sm font-medium text-gray-900">
+                    {medico.nombre} {medico.apellido}
+                  </div>
+                  <div className="text-xs text-gray-500">
+                    {medico.especialidad} • Grupo {medico.grupoGuardia}
+                  </div>
+                </div>
+                <div className="p-2">
+                  <div className="grid grid-cols-7 gap-1">
+                    {dias.map((dia, index) => {
+                      const status = getMedicoStatusForDate(medico, dia);
+                      const esHoy = dia.toDateString() === new Date().toDateString();
+                      const esMesActual = dia.getMonth() === fechaActual.getMonth();
+                      
+                      return (
+                        <div 
+                          key={index} 
+                          className={`relative h-8 flex items-center justify-center text-xs ${
+                            esHoy ? 'ring-2 ring-blue-500 ring-opacity-50' : ''
+                          } ${!esMesActual ? 'opacity-40' : ''}`}
+                        >
+                          <div 
+                            className={`w-6 h-6 rounded ${getStatusColor(status)} flex items-center justify-center text-white font-medium`}
+                          >
+                            {dia.getDate()}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      ))}
     </div>
   );
 };
@@ -1125,6 +2065,12 @@ const HubMedicina: React.FC = () => {
   const [editingSlot, setEditingSlot] = useState<{sector: string, position: number} | null>(null);
   const [currentDoctorInSlot, setCurrentDoctorInSlot] = useState<Medico | undefined>();
 
+  // Modal state for vacation bulk loader
+  const [isBulkVacationOpen, setIsBulkVacationOpen] = useState(false);
+
+  // Modal state for predictive analysis
+  const [isPredictiveAnalysisOpen, setIsPredictiveAnalysisOpen] = useState(false);
+
   // Calculate current state
   const medicosEnGuardia = useMemo(() => 
     GuardiaCalculator.getMedicosEnGuardia(fechaActual, medicos), 
@@ -1325,6 +2271,51 @@ const HubMedicina: React.FC = () => {
     );
   };
 
+  const handleBulkVacationSubmit = (vacations: Omit<Eventualidad, 'id'>[]) => {
+    // Add all vacations to eventualidades
+    const newEventualidades: Eventualidad[] = vacations.map((vacation, index) => ({
+      ...vacation,
+      id: `bulk_evt_${Date.now()}_${index}`
+    }));
+
+    setEventualidades(prev => [...prev, ...newEventualidades]);
+
+    // Update medicos state for all vacations
+    setMedicos(prevMedicos => 
+      prevMedicos.map(medico => {
+        const medicosVacations = vacations.filter(v => v.medicoId === medico.id);
+        
+        if (medicosVacations.length > 0) {
+          const updatedMedico = { ...medico };
+          
+          // Add all vacations for this medico
+          const newVacaciones = medicosVacations.map(v => ({
+            fechaInicio: v.fechaInicio,
+            fechaFin: v.fechaFin,
+            motivo: v.motivo,
+            aprobado: true
+          }));
+
+          updatedMedico.vacaciones = [...medico.vacaciones, ...newVacaciones];
+          
+          // Check if any vacation is currently active
+          const fechaActualStr = new Date().toISOString().split('T')[0];
+          const hasActiveVacation = newVacaciones.some(v => 
+            v.fechaInicio <= fechaActualStr && v.fechaFin >= fechaActualStr
+          );
+          
+          if (hasActiveVacation) {
+            updatedMedico.estado = 'vacaciones';
+          }
+          
+          return updatedMedico;
+        }
+        
+        return medico;
+      })
+    );
+  };
+
   // Doctor assignment handlers
   const handleEditSlot = (sector: string, position: number, currentDoctor?: Medico) => {
     setEditingSlot({ sector, position });
@@ -1380,6 +2371,7 @@ const HubMedicina: React.FC = () => {
     { id: 'dashboard', name: 'Dashboard', icon: BarChart3 },
     { id: 'sectores', name: 'Sectores', icon: Building },
     { id: 'guardias', name: 'Calendario Guardias', icon: Calendar },
+    { id: 'calendario-completo', name: 'Calendario Médicos', icon: Users },
     { id: 'medicos', name: 'Médicos', icon: UserCheck },
     { id: 'eventualidades', name: 'Asistencia', icon: ArrowRightLeft },
     { id: 'alertas', name: 'Alertas', icon: Bell },
@@ -1437,6 +2429,13 @@ const HubMedicina: React.FC = () => {
             <div className="flex items-center justify-between">
               <h1 className="text-2xl font-bold text-gray-900">Dashboard - HUB Medicina</h1>
               <div className="flex items-center space-x-4">
+                <button
+                  onClick={() => setIsPredictiveAnalysisOpen(true)}
+                  className="flex items-center space-x-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
+                >
+                  <BarChart3 className="h-4 w-4" />
+                  <span>Ejecutar Análisis Predictivo</span>
+                </button>
                 <input
                   type="date"
                   value={fechaActual.toISOString().split('T')[0]}
@@ -1456,7 +2455,7 @@ const HubMedicina: React.FC = () => {
                 subtitle={`Grupo ${grupoActualEnGuardia}`}
               />
               <MetricCard
-                title="Médicos en Guardia"
+                title="Médicos De turno"
                 value={medicosEnGuardia.length}
                 icon={UserCheck}
                 color="bg-blue-500"
@@ -1617,6 +2616,94 @@ const HubMedicina: React.FC = () => {
           </div>
         );
 
+      case 'calendario-completo':
+        return (
+          <div className="space-y-6">
+            <div className="flex items-center justify-between">
+              <h1 className="text-2xl font-bold text-gray-900">Calendario Completo - Todos los Médicos</h1>
+              <div className="flex items-center space-x-4">
+                <div className="flex rounded-lg border border-gray-300 overflow-hidden">
+                  <button
+                    onClick={() => setVistaCalendario('semanal')}
+                    className={`px-4 py-2 text-sm font-medium ${
+                      vistaCalendario === 'semanal'
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-white text-gray-700 hover:bg-gray-50'
+                    }`}
+                  >
+                    Vista Semanal
+                  </button>
+                  <button
+                    onClick={() => setVistaCalendario('mensual')}
+                    className={`px-4 py-2 text-sm font-medium ${
+                      vistaCalendario === 'mensual'
+                        ? 'bg-blue-600 text-white'
+                        : 'bg-white text-gray-700 hover:bg-gray-50'
+                    }`}
+                  >
+                    Vista Mensual
+                  </button>
+                </div>
+                <input
+                  type="date"
+                  value={fechaActual.toISOString().split('T')[0]}
+                  onChange={(e) => setFechaActual(new Date(e.target.value))}
+                  className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
+            </div>
+
+            <div className="bg-white rounded-lg shadow-sm border overflow-hidden">
+              <div className="px-6 py-4 bg-gray-50 border-b">
+                <h3 className="text-lg font-semibold text-gray-900 flex items-center">
+                  <Users className="h-5 w-5 mr-2" />
+                  Calendario Integral de Médicos - {vistaCalendario === 'semanal' ? 'Vista Semanal' : 'Vista Mensual'}
+                </h3>
+                <div className="mt-2 flex items-center space-x-4 text-xs">
+                  <div className="flex items-center space-x-1">
+                    <div className="w-3 h-3 bg-blue-500 rounded"></div>
+                    <span>De turno</span>
+                  </div>
+                  <div className="flex items-center space-x-1">
+                    <div className="w-3 h-3 bg-green-500 rounded"></div>
+                    <span>Licenciados</span>
+                  </div>
+                  <div className="flex items-center space-x-1">
+                    <div className="w-3 h-3 bg-gray-500 rounded"></div>
+                    <span>Franco</span>
+                  </div>
+                  <div className="flex items-center space-x-1">
+                    <div className="w-3 h-3 bg-purple-500 rounded"></div>
+                    <span>Vacaciones</span>
+                  </div>
+                  <div className="flex items-center space-x-1">
+                    <div className="w-3 h-3 bg-red-500 rounded"></div>
+                    <span>Ausente</span>
+                  </div>
+                </div>
+              </div>
+              
+              <div className="overflow-x-auto">
+                {vistaCalendario === 'semanal' ? (
+                  <ComprehensiveWeeklyCalendar 
+                    medicos={medicos}
+                    eventualidades={eventualidades}
+                    fechaActual={fechaActual}
+                    pisos={pisos}
+                  />
+                ) : (
+                  <ComprehensiveMonthlyCalendar 
+                    medicos={medicos}
+                    eventualidades={eventualidades}
+                    fechaActual={fechaActual}
+                    pisos={pisos}
+                  />
+                )}
+              </div>
+            </div>
+          </div>
+        );
+
       case 'medicos':
         return (
           <div className="space-y-6">
@@ -1651,7 +2738,11 @@ const HubMedicina: React.FC = () => {
                   return (
                     <div key={estado} className={`border rounded-lg p-3 text-center ${getEstadoColor()}`}>
                       <div className="font-bold text-lg">{count}</div>
-                      <div className="text-xs capitalize">{estado === 'franco' ? 'Post Guardia' : estado}</div>
+                      <div className="text-xs capitalize">
+                        {estado === 'franco' ? 'Post Guardia' : 
+                         estado === 'disponible' ? 'Licenciados' : 
+                         estado === 'guardia' ? 'De turno' : estado}
+                      </div>
                     </div>
                   );
                 })}
@@ -1681,8 +2772,17 @@ const HubMedicina: React.FC = () => {
           <div className="space-y-6">
             <div className="flex items-center justify-between">
               <h1 className="text-2xl font-bold text-gray-900">Gestión de Asistencia</h1>
-              <div className="text-sm text-gray-600">
-                {eventualidades.length} eventualidades registradas
+              <div className="flex items-center space-x-4">
+                <button
+                  onClick={() => setIsBulkVacationOpen(true)}
+                  className="flex items-center space-x-2 px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors"
+                >
+                  <Plane className="h-4 w-4" />
+                  <span>Carga Masiva de Vacaciones</span>
+                </button>
+                <div className="text-sm text-gray-600">
+                  {eventualidades.length} eventualidades registradas
+                </div>
               </div>
             </div>
 
@@ -1872,6 +2972,23 @@ const HubMedicina: React.FC = () => {
         excludeAssigned={true}
         sector={editingSlot?.sector}
         position={editingSlot?.position}
+      />
+
+      {/* Vacation Bulk Loader Modal */}
+      <VacationBulkLoader
+        isOpen={isBulkVacationOpen}
+        onClose={() => setIsBulkVacationOpen(false)}
+        medicos={medicos}
+        onSubmit={handleBulkVacationSubmit}
+      />
+
+      {/* Predictive Analysis Dashboard Modal */}
+      <PredictiveAnalysisDashboard
+        isOpen={isPredictiveAnalysisOpen}
+        onClose={() => setIsPredictiveAnalysisOpen(false)}
+        medicos={medicos}
+        pisos={pisos}
+        eventualidades={eventualidades}
       />
     </div>
   );
