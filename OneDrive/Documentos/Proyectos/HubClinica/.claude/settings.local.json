@@ -16,7 +16,8 @@
       "Read(\\/**)",
       "WebFetch(domain:hub-clinica.vercel.app)",
       "Bash(git clone:*)",
-      "Bash(cat:*)"
+      "Bash(cat:*)",
+      "WebFetch(domain:jutopa31.github.io)"
     ],
     "deny": [],
     "ask": []
