@@ -1,10 +1,11 @@
+import HubMedicina from './components/HubMedicina';
+
 function App() {
   return (
     <div className="App">
-      <h1>HubClinica</h1>
-      <p>Sistema de Gestión Hospitalaria</p>
+      <HubMedicina />
     </div>
-  )
+  );
 }
 
-export default App
+export default App;

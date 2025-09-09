@@ -21,7 +21,10 @@
       "Bash(git init:*)",
       "Bash(touch:*)",
       "Read(//c/Users/julia/OneDrive/Documentos/Proyectos/HubClinica/**)",
-      "Bash(gh repo create:*)"
+      "Bash(gh repo create:*)",
+      "Bash(git branch:*)",
+      "Bash(git remote add:*)",
+      "Read(//c/Users/julia/onedrive/documentos/proyectos/hubclinica-clean/**)"
     ],
     "deny": [],
     "ask": []
