@@ -1,0 +1,29 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mkdir:*)",
+      "Bash(npm install)",
+      "Bash(npm run dev:*)",
+      "Bash(git add:*)",
+      "Bash(git remote set-url:*)",
+      "Bash(git push:*)",
+      "Read(C:\\Users\\julia\\onedrive\\documentos\\proyectos/**)",
+      "Read(C:\\Users\\julia\\onedrive\\documentos\\proyectos\\CADASILAR/**)",
+      "Bash(npm run build:*)",
+      "Bash(git commit:*)",
+      "WebFetch(domain:github.com)",
+      "Bash(git config:*)",
+      "Read(\\/**)",
+      "WebFetch(domain:hub-clinica.vercel.app)",
+      "Bash(git clone:*)",
+      "Bash(cat:*)",
+      "WebFetch(domain:jutopa31.github.io)",
+      "Bash(git init:*)",
+      "Bash(touch:*)",
+      "Read(//c/Users/julia/OneDrive/Documentos/Proyectos/HubClinica/**)",
+      "Bash(gh repo create:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}
